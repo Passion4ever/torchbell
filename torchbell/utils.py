@@ -2,7 +2,7 @@
 
 from typing import Dict
 
-_PRE_PAD = 20
+_PRE_PAD = 12
 
 
 def fmt_time(seconds: float) -> str:
@@ -40,7 +40,7 @@ def fmt_metrics(metrics: Dict[str, float], use_pre: bool = True) -> str:
     for k, v in metrics.items():
         lines.append(f"{k.ljust(max_key)}   {_fmt_value(v)}")
     content = "\n".join(
-        line + " " * max(0, _PRE_PAD - len(line)) for line in lines
+        line + " " * _PRE_PAD for line in lines
     )
     if use_pre:
         return f"<pre>{content}</pre>"

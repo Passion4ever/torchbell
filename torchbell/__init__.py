@@ -3,4 +3,4 @@
 from .monitor import TorchBell
 
 __all__ = ["TorchBell"]
-__version__ = "0.1.0"
+__version__ = "0.1.1"

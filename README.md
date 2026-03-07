@@ -20,8 +20,8 @@ pip install torchbell
 3. Set environment variables or pass them directly:
 
 ```bash
-export TORCHBELL_TOKEN="your-token"
-export TORCHBELL_CHAT_ID="your-chat-id"
+export TG_BOT_TOKEN="your-token"
+export TG_CHAT_ID="your-chat-id"
 ```
 
 ```python

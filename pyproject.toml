@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torchbell"
-version = "0.1.0"
+version = "0.1.1"
 description = "Monitor your training remotely. Get notified when it completes, crashes, or is stopped."
 readme = "README.md"
 license = {text = "Apache-2.0"}
