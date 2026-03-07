@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "torchbell"
 version = "0.1.0"
-description = "Lightweight training monitor with Telegram notifications"
+description = "Monitor your training remotely. Get notified when it completes, crashes, or is stopped."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
