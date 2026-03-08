@@ -6,6 +6,7 @@ from torchbell.email_notifier import (
     EmailNotifier,
     _html_to_plain,
     _extract_subject,
+    _reformat_for_email,
     _to_email_html,
     _MAX_RETRIES,
 )
@@ -92,22 +93,22 @@ def test_extract_subject_strips_clipboard_emoji():
 
 def test_extract_subject_started_tag():
     text = "\U0001f514 MyRun\n\nMonitoring started\nmore"
-    assert _extract_subject(text) == "\U0001f680 [TorchBell] MyRun - Started"
+    assert _extract_subject(text) == "\U0001f514 [TorchBell] MyRun - Started"
 
 
 def test_extract_subject_complete_tag():
     text = "\U0001f514 MyRun\n\nTraining complete!\nmore"
-    assert _extract_subject(text) == "\u2705 [TorchBell] MyRun - Complete"
+    assert _extract_subject(text) == "\U0001f514 [TorchBell] MyRun - Complete"
 
 
 def test_extract_subject_crashed_tag():
     text = "\U0001f514 MyRun\n\nTraining crashed!\nmore"
-    assert _extract_subject(text) == "\U0001f525 [TorchBell] MyRun - Crashed"
+    assert _extract_subject(text) == "\U0001f514 [TorchBell] MyRun - Crashed"
 
 
 def test_extract_subject_stopped_tag():
     text = "\U0001f514 MyRun\n\nManually stopped\nmore"
-    assert _extract_subject(text) == "\u23f8\ufe0f [TorchBell] MyRun - Stopped"
+    assert _extract_subject(text) == "\U0001f514 [TorchBell] MyRun - Stopped"
 
 
 def test_extract_subject_skips_empty_lines():
@@ -126,7 +127,47 @@ def test_extract_subject_truncates_long_line():
 
 
 def test_extract_subject_empty():
-    assert _extract_subject("") == "[TorchBell] Notification"
+    assert _extract_subject("") == "\U0001f514 [TorchBell] Notification"
+
+
+# ── _reformat_for_email ──────────────────────────
+
+def test_reformat_promotes_status_line():
+    text = "\U0001f514 <b>MyRun</b>\n\u2501\u2501\u2501\n\n\u2705 Training complete!\n\U0001f4c5 2026-03-08"
+    result = _reformat_for_email(text)
+    assert result.startswith("\u2705 Training complete!")
+    assert "\u2501" * 18 in result
+    assert "\U0001f4c5 2026-03-08" in result
+    assert "<b>MyRun</b>" not in result
+
+
+def test_reformat_started():
+    text = "\U0001f514 <b>Run</b>\n\u2501\u2501\u2501\n\n\U0001f680 Monitoring started\n\U0001f4c5 now"
+    result = _reformat_for_email(text)
+    assert result.startswith("\U0001f680 Monitoring started")
+
+
+def test_reformat_crashed():
+    text = "\U0001f514 <b>Run</b>\n\u2501\u2501\u2501\n\n\U0001f525 Training crashed!\n\U0001f4c5 now"
+    result = _reformat_for_email(text)
+    assert result.startswith("\U0001f525 Training crashed!")
+
+
+def test_reformat_stopped():
+    text = "\U0001f514 <b>Run</b>\n\u2501\u2501\u2501\n\n\u23f8 Manually stopped\n\U0001f4c5 now"
+    result = _reformat_for_email(text)
+    assert result.startswith("\u23f8 Manually stopped")
+
+
+def test_reformat_leaves_custom_notify_untouched():
+    text = "\U0001f514 <b>Run</b>\n\u2501\u2501\u2501\n\nHello custom message"
+    result = _reformat_for_email(text)
+    assert result == text  # no status emoji → unchanged
+
+
+def test_reformat_leaves_no_header_untouched():
+    text = "Just some plain text"
+    assert _reformat_for_email(text) == text
 
 
 # ── _to_email_html ───────────────────────────────

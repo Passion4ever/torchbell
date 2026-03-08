@@ -28,18 +28,19 @@ def _html_to_plain(html_text: str) -> str:
 
 
 _SUBJECT_TAGS = {
-    "Monitoring started": ("Started", "\U0001f680"),   # 🚀
-    "Training complete":  ("Complete", "\u2705"),       # ✅
-    "Training crashed":   ("Crashed", "\U0001f525"),    # 🔥
-    "Manually stopped":   ("Stopped", "\u23f8\ufe0f"),  # ⏸
+    "Monitoring started": "Started",
+    "Training complete":  "Complete",
+    "Training crashed":   "Crashed",
+    "Manually stopped":   "Stopped",
 }
 
 
 def _extract_subject(text: str) -> str:
     """Extract a descriptive subject line from plain text content.
 
-    Detects the event type and prepends an emoji so the user can tell
-    emails apart at a glance in the inbox.
+    Detects the event type and appends a tag so the user can tell
+    emails apart at a glance in the inbox.  The 🔔 prefix is a
+    consistent brand marker; status emojis live in the email body.
     """
     # Get run name from first non-empty line
     run_name = ""
@@ -50,7 +51,7 @@ def _extract_subject(text: str) -> str:
             break
 
     if not run_name:
-        return "[TorchBell] Notification"
+        return "\U0001f514 [TorchBell] Notification"
 
     # Strip leading emoji prefix (🔔, 📋, 🚀)
     for prefix in ["\U0001f514 ", "\U0001f4cb ", "\U0001f680 "]:
@@ -60,11 +61,9 @@ def _extract_subject(text: str) -> str:
 
     # Detect event type via keyword mapping
     tag = None
-    emoji = "\U0001f514"  # 🔔 default
-    for keyword, (t, e) in _SUBJECT_TAGS.items():
+    for keyword, t in _SUBJECT_TAGS.items():
         if keyword in text:
             tag = t
-            emoji = e
             break
 
     if tag:
@@ -75,7 +74,39 @@ def _extract_subject(text: str) -> str:
     if len(subject) > 66:
         subject = subject[:63] + "..."
 
-    return "{} [TorchBell] {}".format(emoji, subject)
+    return "\U0001f514 [TorchBell] {}".format(subject)
+
+
+# Matches the TG-style header: 🔔/📋 <b>Name</b>\n━━━\n\n
+_EMAIL_HEADER_RE = re.compile(
+    r'^[\U0001f514\U0001f4cb] <b>[^<]*</b>\n'
+    r'\u2501+\n'
+    r'\n'
+)
+_STATUS_EMOJIS = ('\U0001f680', '\u2705', '\U0001f525', '\u23f8')
+_SEP = '\u2501' * 18
+
+
+def _reformat_for_email(text: str) -> str:
+    """Remove the 🔔 Name header and promote the status line to the top.
+
+    Email subjects already carry the project name, so the body starts
+    directly with the status emoji line + separator + details.
+    Only reformats when the body has a recognisable status emoji line;
+    custom ``notify()`` messages are left untouched.
+    """
+    m = _EMAIL_HEADER_RE.match(text)
+    if not m:
+        return text
+    rest = text[m.end():]
+    if not any(rest.startswith(e) for e in _STATUS_EMOJIS):
+        return text
+    first_nl = rest.find('\n')
+    if first_nl == -1:
+        return rest
+    status_line = rest[:first_nl]
+    remaining = rest[first_nl + 1:]
+    return status_line + '\n' + _SEP + '\n\n' + remaining
 
 
 def _to_email_html(text: str) -> str:
@@ -205,7 +236,8 @@ class EmailNotifier(Notifier):
     def _do_send(self, text: str) -> None:
         plain = _html_to_plain(text)
         subject = _extract_subject(plain)
-        html = _to_email_html(text)
+        body = _reformat_for_email(text)
+        html = _to_email_html(body)
 
         msg = MIMEText(html, "html", "utf-8")
         msg["Subject"] = subject

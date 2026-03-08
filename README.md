@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/Passion4ever/torchbell)](https://github.com/Passion4ever/torchbell/blob/main/LICENSE)
 
 Monitor your training remotely.
-Get notified when it completes, crashes, or is stopped — no need to watch the terminal.
+Get notified when it completes, crashes, or is stopped — via **Telegram** and/or **Email**.
 
 ## 📦 Install
 
@@ -15,28 +15,38 @@ pip install torchbell
 
 ## ⚙️ Setup
 
-1. Create a Telegram bot via [@BotFather](https://t.me/BotFather) and get your **token**
+### Telegram
+
+1. Create a bot via [@BotFather](https://t.me/BotFather) and get your **token**
 2. Send any message to your bot (e.g. `/start`)
-3. Run the setup helper — it will validate your token and print the `export` commands you need:
+3. Run the setup helper:
 
 ```bash
 python -c "import torchbell; torchbell.setup('YOUR_TOKEN')"
 ```
 
-Output:
-```
-[TorchBell] Setup
-  Bot:     MyTrainBot
-  Chat ID: 123456789
+4. Set the environment variables:
 
-Set environment variables:
-  export TG_BOT_TOKEN="****...ABcD"
-  export TG_CHAT_ID="123456789"
+```bash
+export TG_BOT_TOKEN="your-token"
+export TG_CHAT_ID="123456789"
 ```
 
-4. Set the environment variables `TG_BOT_TOKEN` and `TG_CHAT_ID`.
+### Email
 
-> **Do not hardcode tokens in your code.** Always use environment variables.
+Set the SMTP environment variables:
+
+```bash
+export SMTP_HOST="smtp.gmail.com"
+export SMTP_PORT="465"          # 465 = SSL, 587 = STARTTLS
+export SMTP_USER="you@gmail.com"
+export SMTP_PASS="app-password"
+export SMTP_TO="recipient@example.com"  # optional, defaults to SMTP_USER
+```
+
+> **Tip:** Set both Telegram and Email variables to receive notifications on both channels simultaneously.
+
+> **Do not hardcode credentials in your code.** Always use environment variables or a `.env` file.
 
 ## 🚀 Quick Start
 
@@ -53,7 +63,7 @@ def train():
 train()
 ```
 
-That's it. You'll get a status message on Telegram and a notification when it's done (or if it crashes). 🎉
+That's it. You'll get a notification when it's done (or if it crashes).
 
 **Want progress and metrics?** Add `bell.log()` inside your loop:
 
@@ -66,3 +76,61 @@ def train():
 
 train()
 ```
+
+## 📖 API
+
+### Constructor
+
+```python
+TorchBell(
+    run_name="Training",     # experiment name
+    token=None,              # Telegram token (or env TG_BOT_TOKEN)
+    chat_id=None,            # Telegram chat ID (or env TG_CHAT_ID)
+    notifier=None,           # custom Notifier or list of Notifiers
+    unit=None,               # display unit ("epoch", "step")
+    refresh_interval=30,     # status refresh interval in seconds
+)
+```
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `start(total=None)` | Begin monitoring |
+| `log(step, metrics)` | Report progress and metrics |
+| `finish(final_metrics=None)` | Training completed |
+| `error(exception=None)` | Training crashed |
+| `notify(message)` | Send a custom notification |
+| `watch(total=None)` | Decorator: auto start/finish/error |
+
+### Custom Notifiers
+
+Use the `notifier=` parameter for advanced setups:
+
+```python
+from torchbell import TorchBell, EmailNotifier
+
+# Email only
+bell = TorchBell(
+    run_name="my-run",
+    notifier=EmailNotifier("smtp.gmail.com", 465, "user", "pass"),
+)
+
+# Multiple channels
+from torchbell.bot import TelegramBot
+bell = TorchBell(
+    run_name="my-run",
+    notifier=[
+        TelegramBot("token", 123456),
+        EmailNotifier("smtp.gmail.com", 465, "user", "pass"),
+    ],
+)
+```
+
+## 🔧 Multi-GPU
+
+TorchBell automatically detects multi-GPU setups (Accelerate / DDP / SLURM) and only sends notifications from the main process.
+
+## 📝 License
+
+[Apache-2.0](LICENSE)
