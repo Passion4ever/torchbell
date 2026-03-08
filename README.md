@@ -16,17 +16,27 @@ pip install torchbell
 ## ⚙️ Setup
 
 1. Create a Telegram bot via [@BotFather](https://t.me/BotFather) and get your **token**
-2. Send a message to your bot, then get your **chat_id** from `https://api.telegram.org/bot<token>/getUpdates`
-3. Set environment variables or pass them directly:
+2. Send any message to your bot (e.g. `/start`)
+3. Run the setup helper — it will validate your token and print the `export` commands you need:
 
 ```bash
-export TG_BOT_TOKEN="your-token"
-export TG_CHAT_ID="your-chat-id"
+python -c "import torchbell; torchbell.setup('YOUR_TOKEN')"
 ```
 
-```python
-bell = TorchBell(token="your-token", chat_id="your-chat-id")
+Output:
 ```
+[TorchBell] Setup
+  Bot:     MyTrainBot
+  Chat ID: 123456789
+
+Set environment variables:
+  export TG_BOT_TOKEN="****...ABcD"
+  export TG_CHAT_ID="123456789"
+```
+
+4. Set the environment variables `TG_BOT_TOKEN` and `TG_CHAT_ID`.
+
+> **Do not hardcode tokens in your code.** Always use environment variables.
 
 ## 🚀 Quick Start
 
