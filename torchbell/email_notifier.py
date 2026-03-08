@@ -244,17 +244,20 @@ class EmailNotifier(Notifier):
         msg["From"] = self._user
         msg["To"] = self._to
 
-        server: Union[smtplib.SMTP_SSL, smtplib.SMTP]
-        if self._port == 465:
-            server = smtplib.SMTP_SSL(self._host, self._port,
-                                      timeout=_SEND_TIMEOUT)
-        else:
-            server = smtplib.SMTP(self._host, self._port,
-                                  timeout=_SEND_TIMEOUT)
-            server.starttls()
-
+        server = None  # type: Optional[Union[smtplib.SMTP_SSL, smtplib.SMTP]]
         try:
+            if self._port == 465:
+                server = smtplib.SMTP_SSL(self._host, self._port,
+                                          timeout=_SEND_TIMEOUT)
+            else:
+                server = smtplib.SMTP(self._host, self._port,
+                                      timeout=_SEND_TIMEOUT)
+                server.starttls()
             server.login(self._user, self._pass)
             server.sendmail(self._user, [self._to], msg.as_string())
         finally:
-            server.quit()
+            if server:
+                try:
+                    server.quit()
+                except Exception:
+                    pass

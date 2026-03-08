@@ -269,18 +269,24 @@ class TorchBell:
         _token = token if token is not None else os.environ.get("TG_BOT_TOKEN")
         _chat_id_raw = chat_id if chat_id is not None else os.environ.get("TG_CHAT_ID")
         if _token and _chat_id_raw:
-            result.append(TelegramBot(_token, int(_chat_id_raw), silent))
+            try:
+                result.append(TelegramBot(_token, int(_chat_id_raw), silent))
+            except (ValueError, TypeError):
+                print("[TorchBell] invalid TG_CHAT_ID, skipping Telegram")
 
         smtp_host = os.environ.get("SMTP_HOST")
         smtp_port = os.environ.get("SMTP_PORT")
         smtp_user = os.environ.get("SMTP_USER")
         smtp_pass = os.environ.get("SMTP_PASS")
         if smtp_host and smtp_port and smtp_user and smtp_pass:
-            from .email_notifier import EmailNotifier
-            result.append(EmailNotifier(
-                smtp_host, int(smtp_port), smtp_user, smtp_pass,
-                smtp_to=os.environ.get("SMTP_TO"),
-            ))
+            try:
+                from .email_notifier import EmailNotifier
+                result.append(EmailNotifier(
+                    smtp_host, int(smtp_port), smtp_user, smtp_pass,
+                    smtp_to=os.environ.get("SMTP_TO"),
+                ))
+            except (ValueError, TypeError):
+                print("[TorchBell] invalid SMTP_PORT, skipping Email")
 
         if not result:
             raise ValueError(
@@ -300,7 +306,10 @@ class TorchBell:
         for var in ("RANK", "LOCAL_RANK", "SLURM_PROCID"):
             val = os.environ.get(var)
             if val is not None:
-                return int(val) == 0
+                try:
+                    return int(val) == 0
+                except (ValueError, TypeError):
+                    continue
         return True
 
     def _handle_signal(self, signum, frame):
@@ -377,7 +386,7 @@ class TorchBell:
                 lines.append(f"▸ Progress    {self._step}{u}")
             lines.append(f"▸ Elapsed     {fmt_time(elapsed)}")
 
-            if self._total and self._step > 0:
+            if self._total and self._total > 0 and self._step > 0:
                 speed = elapsed / self._step
                 remaining = speed * (self._total - self._step)
                 lines.append(f"▸ ETA         {fmt_time(remaining)}")
