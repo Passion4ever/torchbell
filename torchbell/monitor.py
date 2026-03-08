@@ -15,9 +15,16 @@ import time
 import traceback
 from datetime import datetime
 from functools import wraps
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Union
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from .bot import TelegramBot
+from .notifier import Notifier
 from .utils import fmt_time, fmt_metrics
 
 _SEP = "━" * 21
@@ -30,11 +37,17 @@ class TorchBell:
     run_name         : experiment name shown in all messages
     token            : Bot Token, defaults to env TG_BOT_TOKEN
     chat_id          : Chat ID, defaults to env TG_CHAT_ID
+    notifier         : single Notifier, list of Notifiers, or None
     accelerator      : Accelerate instance (optional)
     rank             : process rank (optional), 0 = main process
     unit             : display unit for progress (e.g. "epoch", "step"), default none
     silent           : mute notifications (no vibration/ring)
     refresh_interval : status message refresh interval in seconds (default 30)
+
+    Notifier resolution:
+      1. explicit notifier parameter (single or list)
+      2. auto-detect from params / env vars — all configured channels activate
+      3. raise ValueError if nothing configured
 
     Multi-GPU dedup priority:
       1. explicit rank parameter
@@ -48,6 +61,7 @@ class TorchBell:
         run_name: str = "Training",
         token: Optional[str] = None,
         chat_id: Optional[int] = None,
+        notifier: Union[Notifier, List[Notifier], None] = None,
         accelerator=None,
         rank: Optional[int] = None,
         unit: Optional[str] = None,
@@ -60,19 +74,10 @@ class TorchBell:
         self._unit = f" {unit}" if unit else ""
 
         if not self._is_main:
-            self._bot = None
+            self._notifiers: List[Notifier] = []
             return
 
-        token = token if token is not None else os.environ.get("TG_BOT_TOKEN")
-        _chat_id_raw = chat_id if chat_id is not None else os.environ.get("TG_CHAT_ID")
-        if not token or not _chat_id_raw:
-            raise ValueError(
-                "token and chat_id required. "
-                "Pass as arguments or set TG_BOT_TOKEN / TG_CHAT_ID env vars."
-            )
-        chat_id = int(_chat_id_raw)
-
-        self._bot = TelegramBot(token, chat_id, silent)
+        self._notifiers = self._resolve_notifiers(notifier, token, chat_id, silent)
         self._refresh_interval = refresh_interval
 
         self._start_time: Optional[float] = None
@@ -80,7 +85,7 @@ class TorchBell:
         self._total: Optional[int] = None
         self._latest_metrics: Dict[str, float] = {}
 
-        self._status_msg_id: Optional[int] = None
+        self._status_msg_ids: Dict[int, int] = {}
         self._state: str = "idle"  # idle / running / finished / crashed / stopped
         self._refresh_thread: Optional[threading.Thread] = None
         self._stop_refresh = threading.Event()
@@ -108,8 +113,14 @@ class TorchBell:
         self._step = 0
         self._latest_metrics = {}
 
-        assert self._bot is not None
-        self._status_msg_id = self._bot.send_sync(self._build_status())
+        status = self._build_status()
+        start_notif = self._build_start_notification()
+        self._status_msg_ids = {}
+        for i, n in enumerate(self._notifiers):
+            msg = status if n.supports_edit else start_notif
+            mid = n.send_sync(msg)
+            if mid is not None:
+                self._status_msg_ids[i] = mid
 
         self._stop_refresh.clear()
         self._refresh_thread = threading.Thread(
@@ -132,19 +143,20 @@ class TorchBell:
         self._state = "finished"
         self._stop_refresh.set()
 
-        assert self._bot is not None
         if final_metrics:
             self._latest_metrics = final_metrics
+
+        status = self._build_status()
+        for i, n in enumerate(self._notifiers):
+            if i in self._status_msg_ids:
+                n.edit_sync(self._status_msg_ids[i], status)
 
         elapsed = time.time() - self._start_time if self._start_time else 0
         metrics_str = f"\n\n{fmt_metrics(self._latest_metrics)}" if self._latest_metrics else ""
 
-        if self._status_msg_id:
-            self._bot.edit_sync(self._status_msg_id, self._build_status())
-
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         total_str = f"\n🔢 {self._total}{self._unit}" if self._total else ""
-        self._bot.send_sync(
+        text = (
             f"🔔 <b>{self._safe_name}</b>\n"
             f"{_SEP}\n"
             f"\n"
@@ -152,14 +164,15 @@ class TorchBell:
             f"📅 {now}\n"
             f"⏱ {fmt_time(elapsed)}"
             f"{total_str}"
-            f"{metrics_str}",
+            f"{metrics_str}"
         )
+        for n in self._notifiers:
+            n.send_sync(text)
 
     def error(self, exception: Optional[Exception] = None):
         """Training crashed."""
         if not self._is_main:
             return
-        assert self._bot is not None
         self._state = "crashed"
         self._stop_refresh.set()
 
@@ -173,26 +186,31 @@ class TorchBell:
         err_type = type(exception).__name__ if exception else "Exception"
         err_msg = html.escape(str(exception)) if exception else "Unknown"
 
-        if self._status_msg_id:
-            self._bot.edit_sync(self._status_msg_id, self._build_status())
+        status = self._build_status()
+        for i, n in enumerate(self._notifiers):
+            if i in self._status_msg_ids:
+                n.edit_sync(self._status_msg_ids[i], status)
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self._bot.send_sync(
+        text = (
             f"🔔 <b>{self._safe_name}</b>\n"
             f"{_SEP}\n"
             f"\n"
             f"🔥 Training crashed!\n"
             f"📅 {now}\n"
             f"❌ <b>{err_type}</b>: {err_msg}\n\n"
-            f'<pre><code class="language-python">{tb}</code></pre>',
+            f'<pre><code class="language-python">{tb}</code></pre>'
         )
+        for n in self._notifiers:
+            n.send_sync(text)
 
     def notify(self, message: str):
         """Send a custom notification."""
         if not self._is_main:
             return
-        assert self._bot is not None
-        self._bot.send(f"🔔 <b>{self._safe_name}</b>\n{_SEP}\n\n{message}")
+        text = f"🔔 <b>{self._safe_name}</b>\n{_SEP}\n\n{message}"
+        for n in self._notifiers:
+            n.send(text)
 
     # ── Decorator ───────────────────────────────────
 
@@ -225,6 +243,55 @@ class TorchBell:
     # ── Internal ────────────────────────────────────
 
     @staticmethod
+    def _resolve_notifiers(
+        notifier: Union[Notifier, List[Notifier], None],
+        token: Optional[str],
+        chat_id: Optional[int],
+        silent: bool,
+    ) -> List[Notifier]:
+        # 1. Explicit notifier(s)
+        if notifier is not None:
+            if isinstance(notifier, list):
+                if not notifier:
+                    raise ValueError("notifier list must not be empty.")
+                for n in notifier:
+                    if not isinstance(n, Notifier):
+                        raise TypeError(
+                            "Every item in notifier list must be a "
+                            "Notifier instance, got {}.".format(type(n).__name__)
+                        )
+                return list(notifier)
+            return [notifier]
+
+        # 2. Auto-detect all available channels
+        result = []  # type: List[Notifier]
+
+        _token = token if token is not None else os.environ.get("TG_BOT_TOKEN")
+        _chat_id_raw = chat_id if chat_id is not None else os.environ.get("TG_CHAT_ID")
+        if _token and _chat_id_raw:
+            result.append(TelegramBot(_token, int(_chat_id_raw), silent))
+
+        smtp_host = os.environ.get("SMTP_HOST")
+        smtp_port = os.environ.get("SMTP_PORT")
+        smtp_user = os.environ.get("SMTP_USER")
+        smtp_pass = os.environ.get("SMTP_PASS")
+        if smtp_host and smtp_port and smtp_user and smtp_pass:
+            from .email_notifier import EmailNotifier
+            result.append(EmailNotifier(
+                smtp_host, int(smtp_port), smtp_user, smtp_pass,
+                smtp_to=os.environ.get("SMTP_TO"),
+            ))
+
+        if not result:
+            raise ValueError(
+                "No notifier configured. "
+                "Pass notifier=, token/chat_id, "
+                "or set TG_BOT_TOKEN/TG_CHAT_ID or SMTP_* env vars."
+            )
+
+        return result
+
+    @staticmethod
     def _detect_is_main(accelerator, rank) -> bool:
         if rank is not None:
             return bool(rank == 0)
@@ -243,7 +310,6 @@ class TorchBell:
     def _on_stop(self):
         if self._state != "running":
             return
-        assert self._bot is not None
         self._state = "stopped"
         self._stop_refresh.set()
 
@@ -253,12 +319,14 @@ class TorchBell:
             prev_handler = signal.getsignal(signal.SIGINT)
             signal.signal(signal.SIGINT, signal.SIG_IGN)
         try:
-            if self._status_msg_id:
-                self._bot.edit_sync(self._status_msg_id, self._build_status())
+            status = self._build_status()
+            for i, n in enumerate(self._notifiers):
+                if i in self._status_msg_ids:
+                    n.edit_sync(self._status_msg_ids[i], status)
 
             elapsed = time.time() - self._start_time if self._start_time else 0
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self._bot.send_sync(
+            text = (
                 f"🔔 <b>{self._safe_name}</b>\n"
                 f"{_SEP}\n"
                 f"\n"
@@ -269,6 +337,8 @@ class TorchBell:
                 + (f" / {self._total}" if self._total else "")
                 + self._unit
             )
+            for n in self._notifiers:
+                n.send_sync(text)
         except BaseException as e:
             print(f"[TorchBell] stop notification failed: {e}")
         finally:
@@ -278,6 +348,19 @@ class TorchBell:
     def _on_exit(self):
         if self._state == "running":
             self._on_stop()
+
+    def _build_start_notification(self) -> str:
+        """Build a concise start notification for non-edit notifiers (Email)."""
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        total_str = f"\n\U0001f522 {self._total}{self._unit}" if self._total else ""
+        return (
+            f"\U0001f514 <b>{self._safe_name}</b>\n"
+            f"{_SEP}\n"
+            f"\n"
+            f"\U0001f680 Monitoring started\n"
+            f"\U0001f4c5 {now}"
+            f"{total_str}"
+        )
 
     def _build_status(self) -> str:
         elapsed = time.time() - self._start_time if self._start_time else 0
@@ -345,13 +428,12 @@ class TorchBell:
 
         return "\n".join(lines)
 
-    def _edit_status(self, text: str):
-        if self._status_msg_id and self._bot is not None:
-            self._bot.edit(self._status_msg_id, text)
-
     def _refresh_loop(self):
         while not self._stop_refresh.wait(timeout=self._refresh_interval):
             try:
-                self._edit_status(self._build_status())
+                status = self._build_status()
+                for i, n in enumerate(self._notifiers):
+                    if n.supports_edit and i in self._status_msg_ids:
+                        n.edit(self._status_msg_ids[i], status)
             except Exception as e:
                 print(f"[TorchBell] refresh failed: {e}")

@@ -5,6 +5,13 @@ from typing import Dict
 _PRE_PAD = 12
 
 
+def mask_credential(value: str, show: int = 4) -> str:
+    """Mask a credential string, showing only the last *show* characters."""
+    if len(value) <= show:
+        return "*" * len(value)
+    return "*" * (len(value) - show) + value[-show:]
+
+
 def fmt_time(seconds: float) -> str:
     d, r = divmod(int(seconds), 86400)
     h, r = divmod(r, 3600)

@@ -7,17 +7,30 @@ from typing import Dict, Optional
 
 import requests
 
+from .notifier import Notifier
+
 _SEND_TIMEOUT = 15
 _MAX_RETRIES = 2
 
 
-class TelegramBot:
+class TelegramBot(Notifier):
     def __init__(self, token: str, chat_id: int, silent: bool = False):
         self._base = f"https://api.telegram.org/bot{token}"
         self._chat_id = chat_id
         self._silent = silent
         self._queue: queue.Queue = queue.Queue()
         self._sender_thread: Optional[threading.Thread] = None
+
+    def __repr__(self) -> str:
+        from .utils import mask_credential
+        token = self._base.split("/bot")[-1]
+        return "TelegramBot(token={}, chat_id={})".format(
+            mask_credential(token), self._chat_id
+        )
+
+    @property
+    def supports_edit(self) -> bool:
+        return True
 
     def send(self, text: str, block: bool = False) -> Optional[int]:
         """Queue a message. block=True waits for completion."""

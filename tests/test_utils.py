@@ -1,6 +1,6 @@
 """Tests for torchbell.utils."""
 
-from torchbell.utils import fmt_time, _fmt_value, fmt_metrics
+from torchbell.utils import fmt_time, _fmt_value, fmt_metrics, mask_credential
 
 
 # ── fmt_time ───────────────────────────────────────
@@ -63,6 +63,34 @@ def test_fmt_metrics_no_pre():
     result = fmt_metrics({"loss": 0.5}, use_pre=False)
     assert "<pre>" not in result
     assert "loss" in result
+
+# ── mask_credential ────────────────────────────────
+
+def test_mask_credential_normal():
+    assert mask_credential("abcdefgh") == "****efgh"
+
+
+def test_mask_credential_short():
+    assert mask_credential("abc") == "***"
+
+
+def test_mask_credential_exact_show():
+    assert mask_credential("abcd") == "****"
+
+
+def test_mask_credential_custom_show():
+    assert mask_credential("abcdefgh", show=2) == "******gh"
+
+
+def test_mask_credential_long_token():
+    token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    masked = mask_credential(token)
+    assert masked.endswith("ew11")
+    assert token not in masked
+    assert "*" in masked
+
+
+# ── fmt_metrics (continued) ───────────────────────
 
 def test_fmt_metrics_padding():
     result = fmt_metrics({"loss": 0.5})

@@ -2,21 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-from torchbell.setup import setup, _mask_token
-
-
-# ── _mask_token ──────────────────────────────────
-
-def test_mask_token_normal():
-    assert _mask_token("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11") == "****:****ew11"
-
-
-def test_mask_token_short():
-    assert _mask_token("abcd") == "****"
-
-
-def test_mask_token_five_chars():
-    assert _mask_token("abcde") == "****:****bcde"
+from torchbell.setup import setup
 
 
 # ── setup: happy path ───────────────────────────
@@ -53,7 +39,8 @@ def test_setup_happy_path(mock_get, capsys):
     # Token must NOT appear in output
     assert token not in out
     # Masked token should appear
-    assert "****:****ew11" in out
+    assert "ew11" in out
+    assert "****" in out
 
 
 @patch("requests.get", side_effect=_mock_get_happy)

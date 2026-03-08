@@ -4,14 +4,9 @@ from typing import Any, Dict
 
 import requests
 
+from .utils import mask_credential
+
 _API_TIMEOUT = 15
-
-
-def _mask_token(token: str) -> str:
-    """Return masked token showing only last 4 characters."""
-    if len(token) <= 4:
-        return "****"
-    return "****:****" + token[-4:]
 
 
 def setup(token: str) -> None:
@@ -22,7 +17,7 @@ def setup(token: str) -> None:
         python -c "import torchbell; torchbell.setup('YOUR_TOKEN')"
     """
     base = "https://api.telegram.org/bot{}".format(token)
-    masked = _mask_token(token)
+    masked = mask_credential(token)
 
     # 1. Validate token via getMe
     try:

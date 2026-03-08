@@ -9,7 +9,7 @@ description = "Monitor your training remotely. Get notified when it completes, c
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
-dependencies = ["requests>=2.28.0"]
+dependencies = ["requests>=2.28.0", "python-dotenv>=0.19"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",

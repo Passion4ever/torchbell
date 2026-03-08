@@ -5,10 +5,33 @@ from unittest.mock import patch, MagicMock
 import requests
 
 from torchbell.bot import TelegramBot, _MAX_RETRIES
+from torchbell.notifier import Notifier
 
 
 def _make_bot():
     return TelegramBot("fake-token", 12345)
+
+
+# ── Notifier ABC ──────────────────────────────────
+
+def test_is_notifier_instance():
+    bot = _make_bot()
+    assert isinstance(bot, Notifier)
+
+
+def test_repr_does_not_leak_token():
+    token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    bot = TelegramBot(token, 12345)
+    r = repr(bot)
+    assert token not in r
+    assert "12345" in r
+    assert "TelegramBot" in r
+    assert "****" in r
+
+
+def test_supports_edit_is_true():
+    bot = _make_bot()
+    assert bot.supports_edit is True
 
 
 # ── _do_send ───────────────────────────────────────
