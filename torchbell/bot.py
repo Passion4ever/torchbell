@@ -3,7 +3,7 @@
 import queue
 import threading
 import time
-from typing import Optional
+from typing import Dict, Optional
 
 import requests
 
@@ -21,7 +21,7 @@ class TelegramBot:
 
     def send(self, text: str, block: bool = False) -> Optional[int]:
         """Queue a message. block=True waits for completion."""
-        result = {}
+        result: Dict[str, int] = {}
         done_event = threading.Event() if block else None
         self._queue.put(("send", text, None, done_event, result))
         self._ensure_sender()
@@ -99,7 +99,7 @@ class TelegramBot:
         resp.raise_for_status()
         data = resp.json()
         if data.get("ok"):
-            return data["result"]["message_id"]
+            return int(data["result"]["message_id"])
         print(f"[TorchBell] send error: {data.get('description', 'unknown')}")
         return None
 

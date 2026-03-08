@@ -64,13 +64,13 @@ class TorchBell:
             return
 
         token = token if token is not None else os.environ.get("TG_BOT_TOKEN")
-        chat_id = chat_id if chat_id is not None else os.environ.get("TG_CHAT_ID")
-        if not token or not chat_id:
+        _chat_id_raw = chat_id if chat_id is not None else os.environ.get("TG_CHAT_ID")
+        if not token or not _chat_id_raw:
             raise ValueError(
                 "token and chat_id required. "
                 "Pass as arguments or set TG_BOT_TOKEN / TG_CHAT_ID env vars."
             )
-        chat_id = int(chat_id)
+        chat_id = int(_chat_id_raw)
 
         self._bot = TelegramBot(token, chat_id, silent)
         self._refresh_interval = refresh_interval
@@ -108,6 +108,7 @@ class TorchBell:
         self._step = 0
         self._latest_metrics = {}
 
+        assert self._bot is not None
         self._status_msg_id = self._bot.send_sync(self._build_status())
 
         self._stop_refresh.clear()
@@ -131,6 +132,7 @@ class TorchBell:
         self._state = "finished"
         self._stop_refresh.set()
 
+        assert self._bot is not None
         if final_metrics:
             self._latest_metrics = final_metrics
 
@@ -157,6 +159,7 @@ class TorchBell:
         """Training crashed."""
         if not self._is_main:
             return
+        assert self._bot is not None
         self._state = "crashed"
         self._stop_refresh.set()
 
@@ -188,6 +191,7 @@ class TorchBell:
         """Send a custom notification."""
         if not self._is_main:
             return
+        assert self._bot is not None
         self._bot.send(f"🔔 <b>{self._safe_name}</b>\n{_SEP}\n\n{message}")
 
     # ── Decorator ───────────────────────────────────
@@ -223,9 +227,9 @@ class TorchBell:
     @staticmethod
     def _detect_is_main(accelerator, rank) -> bool:
         if rank is not None:
-            return rank == 0
+            return bool(rank == 0)
         if accelerator is not None:
-            return getattr(accelerator, "is_main_process", True)
+            return bool(getattr(accelerator, "is_main_process", True))
         for var in ("RANK", "LOCAL_RANK", "SLURM_PROCID"):
             val = os.environ.get(var)
             if val is not None:
@@ -239,6 +243,7 @@ class TorchBell:
     def _on_stop(self):
         if self._state != "running":
             return
+        assert self._bot is not None
         self._state = "stopped"
         self._stop_refresh.set()
 
@@ -341,7 +346,7 @@ class TorchBell:
         return "\n".join(lines)
 
     def _edit_status(self, text: str):
-        if self._status_msg_id:
+        if self._status_msg_id and self._bot is not None:
             self._bot.edit(self._status_msg_id, text)
 
     def _refresh_loop(self):
